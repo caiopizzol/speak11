@@ -9,13 +9,9 @@
 .build/
 .swiftpm/
 
-# App bundles and CLI tools (built during install, not tracked)
+# Packaged application artifacts
 *.app
-speak11-audio
-
-# Python
-__pycache__/
-.venv/
+dist/
 
 # IDE
 .vscode/

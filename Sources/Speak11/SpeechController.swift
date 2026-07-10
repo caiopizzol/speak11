@@ -1,0 +1,410 @@
+import AVFoundation
+import FluidAudio
+import Foundation
+
+enum SpeechFailure: Equatable {
+    case modelPreparation(text: String?, message: String)
+    case synthesis(text: String, message: String)
+    case playback(text: String, message: String)
+
+    var retryTarget: SpeechRetryTarget {
+        switch self {
+        case let .modelPreparation(text?, _):
+            .speak(text)
+        case .modelPreparation(nil, _):
+            .prepareVoice
+        case let .synthesis(text, _), let .playback(text, _):
+            .speak(text)
+        }
+    }
+
+    var menuSummary: String {
+        let summary = switch self {
+        case let .modelPreparation(_, message):
+            "Voice preparation failed: \(message)"
+        case let .synthesis(_, message):
+            "Speech synthesis failed: \(message)"
+        case let .playback(_, message):
+            "Playback failed: \(message)"
+        }
+        return Self.truncated(Self.oneLine(summary))
+    }
+
+    private static func oneLine(_ text: String) -> String {
+        text.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
+    }
+
+    private static func truncated(_ text: String) -> String {
+        let maximumLength = 96
+        guard text.count > maximumLength else { return text }
+        return "\(text.prefix(maximumLength - 1))…"
+    }
+}
+
+enum SpeechRetryTarget: Equatable {
+    case prepareVoice
+    case speak(String)
+}
+
+enum SpeechSpeed {
+    static func isLookaheadStale(synthesizedSpeed: Float, currentSpeed: Float) -> Bool {
+        abs(synthesizedSpeed - currentSpeed) >= 0.001
+    }
+
+    // Mid-chunk speed changes time-stretch the already-synthesized audio;
+    // AVAudioPlayer supports rates in 0.5...2.0, and the next chunk is
+    // synthesized at the exact speed anyway.
+    static func playbackRate(desiredSpeed: Float, synthesizedSpeed: Float) -> Float {
+        guard synthesizedSpeed > 0 else { return 1 }
+        return min(max(desiredSpeed / synthesizedSpeed, 0.5), 2)
+    }
+}
+
+@MainActor
+final class SpeechController {
+    enum State: Equatable {
+        case idle
+        case preparing
+        case speaking
+        case failed(SpeechFailure)
+    }
+
+    var onStateChange: ((State) -> Void)?
+
+    private(set) var state: State = .idle {
+        didSet { onStateChange?(state) }
+    }
+    private(set) var isVoicePrepared = false
+    private(set) var isBackgroundWarmup = false
+
+    var isActive: Bool {
+        state == .preparing || state == .speaking
+    }
+
+    // Background warm-up must not count as user activity, or the first
+    // hotkey press after launch is read as Stop and swallowed.
+    var isUserInitiatedActive: Bool {
+        isActive && !isBackgroundWarmup
+    }
+
+    private let engine = KokoroAneManager()
+    private var audioPlayer: AVAudioPlayer?
+    private var speechTask: Task<Void, Never>?
+    private var inFlightSynthesis: Task<Data, Error>?
+    private var inFlightSynthesisID: UUID?
+    private var generation = 0
+
+    // engine.isAvailable() reflects in-memory load state, not the disk cache,
+    // so launch routing must check the cached files directly or every cold
+    // launch would be treated as model recovery.
+    nonisolated static func modelsAvailableOnDisk() -> Bool {
+        guard let cacheRoot = try? TtsCacheDirectory.ensure() else { return false }
+        let repoDirectory = cacheRoot
+            .appendingPathComponent(KokoroAneResourceDownloader.modelsSubdirectory)
+            .appendingPathComponent(KokoroAneVariant.english.repo.folderName)
+        return ModelNames.KokoroAne.requiredModels.allSatisfy { name in
+            FileManager.default.fileExists(
+                atPath: repoDirectory.appendingPathComponent(name).path
+            )
+        }
+    }
+
+    func prepareVoice() {
+        guard !isActive, !isVoicePrepared else { return }
+        begin { [weak self] generation in
+            guard let self else { return }
+            try await prepareForSpeech(requestText: nil)
+            guard isCurrent(generation) else { return }
+            isBackgroundWarmup = false
+            state = .idle
+        }
+    }
+
+    func warmUpVoice() {
+        guard !isActive, !isVoicePrepared else { return }
+        prepareVoice()
+        isBackgroundWarmup = true
+    }
+
+    func prepareVoiceAndWait() async throws {
+        guard !isVoicePrepared else { return }
+        stop()
+        generation += 1
+        let currentGeneration = generation
+        state = .preparing
+
+        do {
+            try Task.checkCancellation()
+            try await prepareEngine()
+            guard isCurrent(currentGeneration) else { throw CancellationError() }
+            state = .idle
+        } catch {
+            if generation == currentGeneration {
+                state = .idle
+            }
+            throw error
+        }
+    }
+
+    func speak(_ text: String) {
+        guard let requestText = TextNormalizer.normalize(text) else { return }
+        let chunks = TextChunker.chunks(from: requestText)
+        guard !chunks.isEmpty else { return }
+
+        begin { [weak self] generation in
+            guard let self else { return }
+            try await prepareForSpeech(requestText: requestText)
+            try await play(
+                requestText: requestText,
+                chunks: chunks,
+                generation: generation
+            )
+            guard isCurrent(generation) else { return }
+            state = .idle
+        }
+    }
+
+    func retry() {
+        guard case let .failed(failure) = state else { return }
+        switch failure.retryTarget {
+        case .prepareVoice:
+            prepareVoice()
+        case let .speak(text):
+            speak(text)
+        }
+    }
+
+    func stop() {
+        generation += 1
+        isBackgroundWarmup = false
+        speechTask?.cancel()
+        speechTask = nil
+        inFlightSynthesis?.cancel()
+        audioPlayer?.stop()
+        audioPlayer = nil
+        state = .idle
+    }
+
+    private func begin(
+        operation: @escaping @MainActor (Int) async throws -> Void
+    ) {
+        stop()
+        generation += 1
+        let currentGeneration = generation
+        state = .preparing
+
+        speechTask = Task { [weak self] in
+            do {
+                try await operation(currentGeneration)
+            } catch is CancellationError {
+                return
+            } catch {
+                guard let self, self.isCurrent(currentGeneration) else { return }
+                self.audioPlayer = nil
+                self.isBackgroundWarmup = false
+                if let speechError = error as? SpeechOperationFailure {
+                    self.state = .failed(speechError.failure)
+                } else {
+                    self.state = .failed(.modelPreparation(
+                        text: nil,
+                        message: error.localizedDescription
+                    ))
+                }
+            }
+        }
+    }
+
+    private func prepareForSpeech(requestText: String?) async throws {
+        do {
+            try await prepareEngine()
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            throw SpeechOperationFailure(.modelPreparation(
+                text: requestText,
+                message: error.localizedDescription
+            ))
+        }
+    }
+
+    private func prepareEngine() async throws {
+        guard !isVoicePrepared else { return }
+        try await engine.initialize()
+        try Task.checkCancellation()
+        isVoicePrepared = true
+    }
+
+    private func play(
+        requestText: String,
+        chunks: [String],
+        generation: Int
+    ) async throws {
+        var pendingAudio = queuedAudio(
+            for: chunks[0],
+            requestText: requestText,
+            speed: Preferences.speakingRate,
+            generation: generation
+        )
+        defer { pendingAudio.cancel() }
+
+        for index in chunks.indices {
+            let speed = Preferences.speakingRate
+            if SpeechSpeed.isLookaheadStale(
+                synthesizedSpeed: pendingAudio.speed,
+                currentSpeed: speed
+            ) {
+                pendingAudio.cancel()
+                pendingAudio = queuedAudio(
+                    for: chunks[index],
+                    requestText: requestText,
+                    speed: speed,
+                    generation: generation
+                )
+            }
+
+            let synthesizedSpeed = pendingAudio.speed
+            let audio = try await pendingAudio.task.value
+            try Task.checkCancellation()
+            guard isCurrent(generation) else { throw CancellationError() }
+
+            if chunks.indices.contains(index + 1) {
+                let nextText = chunks[index + 1]
+                pendingAudio = queuedAudio(
+                    for: nextText,
+                    requestText: requestText,
+                    speed: speed,
+                    generation: generation
+                )
+            }
+
+            state = .speaking
+            do {
+                try await playAudio(
+                    audio,
+                    synthesizedSpeed: synthesizedSpeed,
+                    generation: generation
+                )
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                throw SpeechOperationFailure(.playback(
+                    text: requestText,
+                    message: error.localizedDescription
+                ))
+            }
+        }
+    }
+
+    private func queuedAudio(
+        for chunk: String,
+        requestText: String,
+        speed: Float,
+        generation: Int
+    ) -> QueuedAudio {
+        QueuedAudio(
+            speed: speed,
+            task: Task { [weak self] in
+                guard let self else { throw CancellationError() }
+                do {
+                    return try await synthesize(
+                        chunk,
+                        speed: speed,
+                        generation: generation
+                    )
+                } catch is CancellationError {
+                    throw CancellationError()
+                } catch {
+                    throw SpeechOperationFailure(.synthesis(
+                        text: requestText,
+                        message: error.localizedDescription
+                    ))
+                }
+            }
+        )
+    }
+
+    private func playAudio(
+        _ data: Data,
+        synthesizedSpeed: Float,
+        generation: Int
+    ) async throws {
+        let player = try AVAudioPlayer(data: data)
+        player.enableRate = true
+        player.prepareToPlay()
+        guard player.play() else {
+            throw SpeechError.playbackFailed
+        }
+        audioPlayer = player
+
+        while player.isPlaying {
+            player.rate = SpeechSpeed.playbackRate(
+                desiredSpeed: Preferences.speakingRate,
+                synthesizedSpeed: synthesizedSpeed
+            )
+            try await Task.sleep(for: .milliseconds(50))
+            guard isCurrent(generation) else { throw CancellationError() }
+        }
+        audioPlayer = nil
+    }
+
+    private func synthesize(
+        _ text: String,
+        speed: Float,
+        generation: Int
+    ) async throws -> Data {
+        if let existing = inFlightSynthesis {
+            _ = try? await existing.value
+        }
+        try Task.checkCancellation()
+        guard isCurrent(generation) else { throw CancellationError() }
+
+        let synthesisID = UUID()
+        let task = Task {
+            try Task.checkCancellation()
+            return try await engine.synthesize(text: text, speed: speed)
+        }
+        inFlightSynthesis = task
+        inFlightSynthesisID = synthesisID
+
+        defer {
+            if inFlightSynthesisID == synthesisID {
+                inFlightSynthesis = nil
+                inFlightSynthesisID = nil
+            }
+        }
+        return try await withTaskCancellationHandler {
+            try await task.value
+        } onCancel: {
+            task.cancel()
+        }
+    }
+
+    private func isCurrent(_ value: Int) -> Bool {
+        value == generation && !Task.isCancelled
+    }
+}
+
+private struct QueuedAudio {
+    let speed: Float
+    let task: Task<Data, Error>
+
+    func cancel() {
+        task.cancel()
+    }
+}
+
+private struct SpeechOperationFailure: Error {
+    let failure: SpeechFailure
+
+    init(_ failure: SpeechFailure) {
+        self.failure = failure
+    }
+}
+
+private enum SpeechError: LocalizedError {
+    case playbackFailed
+
+    var errorDescription: String? {
+        "The generated audio could not be played."
+    }
+}
