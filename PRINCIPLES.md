@@ -35,7 +35,7 @@ another application.
 - Chunk with Natural Language sentence boundaries and bound chunk size.
 - Generate one chunk ahead while the current chunk plays.
 - Pick up speed changes at chunk boundaries and regenerate stale lookahead.
-- A second `⌥⇧/` press cancels pending playback and discards late results.
+- A second `⌥A` press cancels pending playback and discards late results.
 
 ## Distribution
 

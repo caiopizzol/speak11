@@ -5,7 +5,7 @@
 <h1 align="center">Speak11</h1>
 
 <p align="center">
-  Select text in any app, press <kbd>⌥</kbd><kbd>⇧</kbd><kbd>/</kbd>, and hear it read aloud.<br>
+  Select text in any app, press <kbd>⌥</kbd><kbd>A</kbd>, and hear it read aloud.<br>
   Private, local text-to-speech for Apple Silicon Macs.
 </p>
 
@@ -25,10 +25,12 @@ speech generation works offline.
 2. Drag `Speak11.app` into Applications.
 3. Open Speak11. A setup window asks for Accessibility access and downloads
    the voice automatically.
-4. Select text in any app and press `Option-Shift-/`.
+4. Select text in any app and press `Option-A`.
 
-Press the shortcut again to stop. Use the waveform menu-bar icon to change
-speaking speed or launch Speak11 at login.
+Press the shortcut again to stop. While Speak11 is running, `Option-A` is
+reserved system-wide, so typing "å" with the Option key is unavailable. Use
+the waveform menu-bar icon to change speaking speed or launch Speak11 at
+login.
 
 Development artifacts use an ad-hoc signature and may require right-clicking
 the app and choosing Open. Tagged releases are frictionless only when the

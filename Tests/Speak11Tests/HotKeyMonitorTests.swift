@@ -3,17 +3,26 @@ import Testing
 
 struct HotKeyMonitorTests {
     @Test
-    func findsFirstSlashKeyCode() {
-        let result = SlashKeyCodeResolver.keyCodeForSlash { keyCode in
-            keyCode == 12 ? "/" : nil
+    func findsFirstKeyCodeProducingTheSpeakCharacter() {
+        let result = SpeakKeyCodeResolver.keyCode(for: "a") { keyCode in
+            keyCode == 12 ? "a" : nil
         }
 
         #expect(result == 12)
     }
 
     @Test
-    func returnsNilWhenLayoutDoesNotProduceSlash() {
-        let result = SlashKeyCodeResolver.keyCodeForSlash { _ in nil }
+    func findsSwappedKeyOnAzertyStyleLayouts() {
+        let result = SpeakKeyCodeResolver.keyCode(for: "a") { keyCode in
+            keyCode == 12 ? "a" : (keyCode == 0 ? "q" : nil)
+        }
+
+        #expect(result == 12)
+    }
+
+    @Test
+    func returnsNilWhenLayoutDoesNotProduceTheCharacter() {
+        let result = SpeakKeyCodeResolver.keyCode(for: "a") { _ in nil }
 
         #expect(result == nil)
     }

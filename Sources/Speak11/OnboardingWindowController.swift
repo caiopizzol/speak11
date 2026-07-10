@@ -293,7 +293,7 @@ final class OnboardingWindowController: NSObject, NSWindowDelegate {
     private func renderReadyStep(in stack: NSStackView) {
         stack.addArrangedSubview(titleLabel("Select text anywhere, then press"))
 
-        let keycap = NSTextField(labelWithString: "⌥⇧/")
+        let keycap = NSTextField(labelWithString: "⌥A")
         keycap.alignment = .center
         keycap.font = .monospacedSystemFont(ofSize: 30, weight: .semibold)
         keycap.wantsLayer = true
@@ -396,7 +396,7 @@ final class OnboardingWindowController: NSObject, NSWindowDelegate {
 
     @objc private func hearSample() {
         speechController.speak(
-            "Speak11 is ready. Select text anywhere and press option shift slash."
+            "Speak11 is ready. Select text anywhere and press option A."
         )
     }
 

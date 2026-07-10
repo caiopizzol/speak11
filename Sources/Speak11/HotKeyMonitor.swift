@@ -3,7 +3,7 @@ import Foundation
 
 private let speakHotKeySignature: OSType = 0x5350_3131
 private let speakHotKeyID: UInt32 = 1
-private let speakHotKeyModifiers = UInt32(optionKey | shiftKey)
+private let speakHotKeyModifiers = UInt32(optionKey)
 
 private let speakHotKeyHandler: EventHandlerUPP = { _, event, context in
     guard let event, let context else { return noErr }
@@ -31,21 +31,23 @@ private let speakHotKeyHandler: EventHandlerUPP = { _, event, context in
     return noErr
 }
 
-enum SlashKeyCodeResolver {
-    static let fallbackKeyCode: UInt32 = 44
+enum SpeakKeyCodeResolver {
+    static let speakKeyCharacter: Character = "a"
+    static let fallbackKeyCode: UInt32 = UInt32(kVK_ANSI_A)
 
-    static func keyCodeForSlash(
+    static func keyCode(
+        for character: Character,
         translate: (UInt16) -> Character?
     ) -> UInt32? {
         for keyCode in UInt16(0)...UInt16(127) {
-            if translate(keyCode) == "/" {
+            if translate(keyCode) == character {
                 return UInt32(keyCode)
             }
         }
         return nil
     }
 
-    static func activeLayoutSlashKeyCode() -> UInt32 {
+    static func activeLayoutSpeakKeyCode() -> UInt32 {
         guard
             let inputSource = TISCopyCurrentKeyboardLayoutInputSource()?.takeRetainedValue(),
             let layoutDataPointer = TISGetInputSourceProperty(
@@ -57,7 +59,7 @@ enum SlashKeyCodeResolver {
         }
 
         let layoutData = unsafeBitCast(layoutDataPointer, to: CFData.self)
-        return keyCodeForSlash { keyCode in
+        return keyCode(for: speakKeyCharacter) { keyCode in
             character(for: keyCode, layoutData: layoutData)
         } ?? fallbackKeyCode
     }
@@ -161,7 +163,7 @@ final class HotKeyMonitor {
         var hotKeyRef: EventHotKeyRef?
         let hotKeyID = EventHotKeyID(signature: speakHotKeySignature, id: speakHotKeyID)
         let status = RegisterEventHotKey(
-            SlashKeyCodeResolver.activeLayoutSlashKeyCode(),
+            SpeakKeyCodeResolver.activeLayoutSpeakKeyCode(),
             speakHotKeyModifiers,
             hotKeyID,
             GetEventDispatcherTarget(),
