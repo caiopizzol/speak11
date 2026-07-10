@@ -2,13 +2,61 @@ import AVFoundation
 import FluidAudio
 import Foundation
 
+enum SpeechFailure: Equatable {
+    case modelPreparation(message: String)
+    case synthesis(text: String, message: String)
+    case playback(text: String, message: String)
+
+    var retryTarget: SpeechRetryTarget {
+        switch self {
+        case .modelPreparation:
+            .prepareVoice
+        case let .synthesis(text, _), let .playback(text, _):
+            .speak(text)
+        }
+    }
+
+    var menuSummary: String {
+        let summary = switch self {
+        case let .modelPreparation(message):
+            "Voice preparation failed: \(message)"
+        case let .synthesis(_, message):
+            "Speech synthesis failed: \(message)"
+        case let .playback(_, message):
+            "Playback failed: \(message)"
+        }
+        return Self.truncated(Self.oneLine(summary))
+    }
+
+    private static func oneLine(_ text: String) -> String {
+        text.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
+    }
+
+    private static func truncated(_ text: String) -> String {
+        let maximumLength = 96
+        guard text.count > maximumLength else { return text }
+        return "\(text.prefix(maximumLength - 1))…"
+    }
+}
+
+enum SpeechRetryTarget: Equatable {
+    case prepareVoice
+    case speak(String)
+}
+
+enum SpeechSpeed {
+    static func isLookaheadStale(synthesizedSpeed: Float, currentSpeed: Float) -> Bool {
+        abs(synthesizedSpeed - currentSpeed) >= 0.001
+    }
+}
+
 @MainActor
 final class SpeechController {
     enum State: Equatable {
         case idle
         case preparing
         case speaking
-        case failed(String)
+        case failed(SpeechFailure)
     }
 
     var onStateChange: ((State) -> Void)?
@@ -33,22 +81,37 @@ final class SpeechController {
         guard !isActive, !isVoicePrepared else { return }
         begin { [weak self] generation in
             guard let self else { return }
-            try await prepareEngine()
+            try await prepareForSpeech()
             guard isCurrent(generation) else { return }
             state = .idle
         }
     }
 
     func speak(_ text: String) {
-        let chunks = TextChunker.chunks(from: text)
+        guard let requestText = TextNormalizer.normalize(text) else { return }
+        let chunks = TextChunker.chunks(from: requestText)
         guard !chunks.isEmpty else { return }
 
         begin { [weak self] generation in
             guard let self else { return }
-            try await prepareEngine()
-            try await play(chunks: chunks, generation: generation)
+            try await prepareForSpeech()
+            try await play(
+                requestText: requestText,
+                chunks: chunks,
+                generation: generation
+            )
             guard isCurrent(generation) else { return }
             state = .idle
+        }
+    }
+
+    func retry() {
+        guard case let .failed(failure) = state else { return }
+        switch failure.retryTarget {
+        case .prepareVoice:
+            prepareVoice()
+        case let .speak(text):
+            speak(text)
         }
     }
 
@@ -78,8 +141,26 @@ final class SpeechController {
             } catch {
                 guard let self, self.isCurrent(currentGeneration) else { return }
                 self.audioPlayer = nil
-                self.state = .failed(error.localizedDescription)
+                if let speechError = error as? SpeechOperationFailure {
+                    self.state = .failed(speechError.failure)
+                } else {
+                    self.state = .failed(.modelPreparation(
+                        message: error.localizedDescription
+                    ))
+                }
             }
+        }
+    }
+
+    private func prepareForSpeech() async throws {
+        do {
+            try await prepareEngine()
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            throw SpeechOperationFailure(.modelPreparation(
+                message: error.localizedDescription
+            ))
         }
     }
 
@@ -90,28 +171,88 @@ final class SpeechController {
         isVoicePrepared = true
     }
 
-    private func play(chunks: [String], generation: Int) async throws {
-        let speed = Preferences.speakingRate
-        var pendingAudio = Task {
-            try await synthesize(chunks[0], speed: speed, generation: generation)
-        }
+    private func play(
+        requestText: String,
+        chunks: [String],
+        generation: Int
+    ) async throws {
+        var pendingAudio = queuedAudio(
+            for: chunks[0],
+            requestText: requestText,
+            speed: Preferences.speakingRate,
+            generation: generation
+        )
         defer { pendingAudio.cancel() }
 
         for index in chunks.indices {
-            let audio = try await pendingAudio.value
+            let speed = Preferences.speakingRate
+            if SpeechSpeed.isLookaheadStale(
+                synthesizedSpeed: pendingAudio.speed,
+                currentSpeed: speed
+            ) {
+                pendingAudio.cancel()
+                pendingAudio = queuedAudio(
+                    for: chunks[index],
+                    requestText: requestText,
+                    speed: speed,
+                    generation: generation
+                )
+            }
+
+            let audio = try await pendingAudio.task.value
             try Task.checkCancellation()
             guard isCurrent(generation) else { throw CancellationError() }
 
             if chunks.indices.contains(index + 1) {
                 let nextText = chunks[index + 1]
-                pendingAudio = Task {
-                    try await synthesize(nextText, speed: speed, generation: generation)
-                }
+                pendingAudio = queuedAudio(
+                    for: nextText,
+                    requestText: requestText,
+                    speed: speed,
+                    generation: generation
+                )
             }
 
             state = .speaking
-            try await playAudio(audio, generation: generation)
+            do {
+                try await playAudio(audio, generation: generation)
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                throw SpeechOperationFailure(.playback(
+                    text: requestText,
+                    message: error.localizedDescription
+                ))
+            }
         }
+    }
+
+    private func queuedAudio(
+        for chunk: String,
+        requestText: String,
+        speed: Float,
+        generation: Int
+    ) -> QueuedAudio {
+        QueuedAudio(
+            speed: speed,
+            task: Task { [weak self] in
+                guard let self else { throw CancellationError() }
+                do {
+                    return try await synthesize(
+                        chunk,
+                        speed: speed,
+                        generation: generation
+                    )
+                } catch is CancellationError {
+                    throw CancellationError()
+                } catch {
+                    throw SpeechOperationFailure(.synthesis(
+                        text: requestText,
+                        message: error.localizedDescription
+                    ))
+                }
+            }
+        )
     }
 
     private func playAudio(_ data: Data, generation: Int) async throws {
@@ -154,11 +295,32 @@ final class SpeechController {
                 inFlightSynthesisID = nil
             }
         }
-        return try await task.value
+        return try await withTaskCancellationHandler {
+            try await task.value
+        } onCancel: {
+            task.cancel()
+        }
     }
 
     private func isCurrent(_ value: Int) -> Bool {
         value == generation && !Task.isCancelled
+    }
+}
+
+private struct QueuedAudio {
+    let speed: Float
+    let task: Task<Data, Error>
+
+    func cancel() {
+        task.cancel()
+    }
+}
+
+private struct SpeechOperationFailure: Error {
+    let failure: SpeechFailure
+
+    init(_ failure: SpeechFailure) {
+        self.failure = failure
     }
 }
 

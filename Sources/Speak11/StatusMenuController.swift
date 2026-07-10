@@ -6,16 +6,13 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
     private let speechController: SpeechController
     private let onReadSelection: () -> Void
-    private let onPrepareVoice: () -> Void
 
     init(
         speechController: SpeechController,
-        onReadSelection: @escaping () -> Void,
-        onPrepareVoice: @escaping () -> Void
+        onReadSelection: @escaping () -> Void
     ) {
         self.speechController = speechController
         self.onReadSelection = onReadSelection
-        self.onPrepareVoice = onPrepareVoice
         super.init()
 
         let menu = NSMenu()
@@ -48,46 +45,50 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
     private func rebuildMenu(_ menu: NSMenu) {
         menu.removeAllItems()
 
-        let readTitle = speechController.isActive
-            ? "Stop Speaking"
-            : "Read Selection    ⌥⇧/"
-        menu.addItem(item(readTitle, action: #selector(readSelection)))
-        menu.addItem(.separator())
-
-        let voiceStatus: String
-        if speechController.isVoicePrepared {
-            voiceStatus = "Kokoro Heart Ready"
-        } else if speechController.state == .preparing {
-            voiceStatus = "Preparing Kokoro Voice…"
-        } else {
-            voiceStatus = "Prepare Kokoro Voice…"
-        }
-        let voiceItem = item(voiceStatus, action: #selector(prepareVoice))
-        voiceItem.isEnabled = !speechController.isVoicePrepared && !speechController.isActive
-        menu.addItem(voiceItem)
-
-        let speedItem = NSMenuItem(title: "Speaking Speed", action: nil, keyEquivalent: "")
-        speedItem.submenu = speedMenu()
-        menu.addItem(speedItem)
-
-        let loginItem = item("Launch at Login", action: #selector(toggleLaunchAtLogin))
-        loginItem.state = SMAppService.mainApp.status == .enabled ? .on : .off
-        menu.addItem(loginItem)
-
         if !SelectionReader.isAccessibilityEnabled {
-            menu.addItem(.separator())
             menu.addItem(item(
                 "Allow Accessibility Access…",
                 action: #selector(openAccessibilitySettings)
             ))
+            addLaunchAndQuitItems(to: menu)
+            return
         }
 
-        if case let .failed(message) = speechController.state {
-            menu.addItem(.separator())
-            let errorItem = item("Show Speech Error…", action: #selector(showSpeechError(_:)))
-            errorItem.representedObject = message
-            menu.addItem(errorItem)
+        switch speechController.state {
+        case .idle:
+            menu.addItem(item("Read Selection    ⌥⇧/", action: #selector(readSelection)))
+        case .preparing:
+            let preparingItem = item("Preparing Voice…", action: nil)
+            preparingItem.isEnabled = false
+            menu.addItem(preparingItem)
+        case .speaking:
+            menu.addItem(item("Stop Speaking    ⌥⇧/", action: #selector(readSelection)))
+        case let .failed(failure):
+            menu.addItem(item(
+                "⚠︎ Couldn't Speak — Try Again",
+                action: #selector(retrySpeech)
+            ))
+            let summaryItem = item(failure.menuSummary, action: nil)
+            summaryItem.isEnabled = false
+            menu.addItem(summaryItem)
         }
+
+        let speedItem = NSMenuItem(
+            title: "Speed: \(formattedSpeed(Preferences.speakingRate))×",
+            action: nil,
+            keyEquivalent: ""
+        )
+        speedItem.submenu = speedMenu()
+        menu.addItem(speedItem)
+
+        addLaunchAndQuitItems(to: menu)
+    }
+
+    private func addLaunchAndQuitItems(to menu: NSMenu) {
+        menu.addItem(.separator())
+        let loginItem = item("Launch at Login", action: #selector(toggleLaunchAtLogin))
+        loginItem.state = SMAppService.mainApp.status == .enabled ? .on : .off
+        menu.addItem(loginItem)
 
         menu.addItem(.separator())
         menu.addItem(item("Quit Speak11", action: #selector(quit)))
@@ -97,7 +98,7 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
         let menu = NSMenu()
         for speed: Float in [0.75, 1, 1.25, 1.5, 1.75, 2] {
             let speedItem = item(
-                speed == 1 ? "Normal" : "\(speed.formatted())×",
+                "\(formattedSpeed(speed))×",
                 action: #selector(selectSpeed(_:))
             )
             speedItem.representedObject = NSNumber(value: speed)
@@ -115,8 +116,8 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
         onReadSelection()
     }
 
-    @objc private func prepareVoice() {
-        onPrepareVoice()
+    @objc private func retrySpeech() {
+        speechController.retry()
     }
 
     @objc private func selectSpeed(_ sender: NSMenuItem) {
@@ -145,16 +146,15 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
         NSWorkspace.shared.open(url)
     }
 
-    @objc private func showSpeechError(_ sender: NSMenuItem) {
-        let alert = NSAlert()
-        alert.alertStyle = .warning
-        alert.messageText = "Speak11 Could Not Generate Speech"
-        alert.informativeText = sender.representedObject as? String ?? "An unknown error occurred."
-        alert.runModal()
-    }
-
     @objc private func quit() {
         NSApplication.shared.terminate(nil)
+    }
+
+    private func formattedSpeed(_ speed: Float) -> String {
+        let text = String(format: "%.2f", speed)
+        return text
+            .replacingOccurrences(of: #"0+$"#, with: "", options: .regularExpression)
+            .replacingOccurrences(of: #"\.$"#, with: "", options: .regularExpression)
     }
 }
 

@@ -13,7 +13,7 @@
 
 - An Apple Silicon Mac
 - macOS Sonoma 14 or later
-- Internet access on first use to download approximately 330 MB of Kokoro
+- Internet access on first use to download about 200 MB of Kokoro
   model assets
 
 Selected text is never sent to a server. After the first model download,
@@ -26,8 +26,8 @@ speech generation works offline.
 3. Open Speak11 and allow Accessibility access when macOS asks.
 4. Select text in any app and press `Option-Shift-/`.
 
-Press the shortcut again to stop. Use the waveform menu-bar icon to prepare the
-voice in advance, change speaking speed, or launch Speak11 at login.
+Press the shortcut again to stop. Use the waveform menu-bar icon to change
+speaking speed or launch Speak11 at login.
 
 Development artifacts use an ad-hoc signature and may require right-clicking
 the app and choosing Open. Tagged releases are frictionless only when the

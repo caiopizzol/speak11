@@ -33,7 +33,8 @@ another application.
 - Keep the model resident after first use for low repeat latency.
 - Chunk with Natural Language sentence boundaries and bound chunk size.
 - Generate one chunk ahead while the current chunk plays.
-- A second shortcut press cancels pending playback and discards late results.
+- Pick up speed changes at chunk boundaries and regenerate stale lookahead.
+- A second `⌥⇧/` press cancels pending playback and discards late results.
 
 ## Distribution
 

@@ -13,8 +13,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         statusMenuController = StatusMenuController(
             speechController: speechController,
-            onReadSelection: { [weak self] in self?.readSelection() },
-            onPrepareVoice: { [weak self] in self?.speechController.prepareVoice() }
+            onReadSelection: { [weak self] in self?.readSelection() }
         )
 
         hotKeyMonitor.onPress = { [weak self] in
@@ -25,7 +24,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.statusMenuController?.refreshIcon()
         }
 
-        requestAccessibilityAndStartHotKey()
+        startHotKeyAndRequestAccessibility()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -64,13 +63,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func requestAccessibilityAndStartHotKey() {
-        guard SelectionReader.isAccessibilityEnabled else {
-            SelectionReader.requestAccessibilityPermission()
-            startAccessibilityPolling()
-            return
-        }
+    private func startHotKeyAndRequestAccessibility() {
         _ = hotKeyMonitor.start()
+        guard !SelectionReader.isAccessibilityEnabled else { return }
+        SelectionReader.requestAccessibilityPermission()
+        startAccessibilityPolling()
     }
 
     private func startAccessibilityPolling() {
@@ -88,7 +85,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard SelectionReader.isAccessibilityEnabled else { return }
         accessibilityTimer?.invalidate()
         accessibilityTimer = nil
-        _ = hotKeyMonitor.start()
         statusMenuController?.refreshIcon()
     }
 }
