@@ -143,7 +143,7 @@ final class SpeechController {
         let synthesisID = UUID()
         let task = Task {
             try Task.checkCancellation()
-            try await engine.synthesize(text: text, speed: speed)
+            return try await engine.synthesize(text: text, speed: speed)
         }
         inFlightSynthesis = task
         inFlightSynthesisID = synthesisID

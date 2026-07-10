@@ -8,7 +8,7 @@ final class SelectionReader {
     }
 
     static func requestAccessibilityPermission() {
-        let promptKey = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
+        let promptKey = "AXTrustedCheckOptionPrompt"
         _ = AXIsProcessTrustedWithOptions([promptKey: true] as CFDictionary)
     }
 
@@ -109,7 +109,7 @@ final class SelectionReader {
         else {
             return nil
         }
-        return unsafeBitCast(value, to: AXUIElement.self)
+        return unsafeDowncast(value, to: AXUIElement.self)
     }
 }
 

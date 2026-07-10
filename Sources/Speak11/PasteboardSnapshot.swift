@@ -5,9 +5,9 @@ struct PasteboardSnapshot {
     private let items: [[NSPasteboard.PasteboardType: Data]]
 
     var containsSensitiveData: Bool {
-        items.contains { item in
+        items.contains(where: { item in
             !item.keys.isDisjoint(with: Self.sensitiveTypes)
-        }
+        })
     }
 
     init(pasteboard: NSPasteboard = .general) {
