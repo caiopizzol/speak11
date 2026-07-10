@@ -39,13 +39,20 @@ enum TextNormalizer {
 
         var result = text
         for match in matches.reversed() {
-            guard match.url?.scheme != "mailto" else { continue }
+            guard let scheme = match.url?.scheme,
+                  Self.spokenSchemes.contains(scheme.lowercased())
+            else { continue }
             guard let range = Range(match.range, in: result) else { continue }
             let spoken = spokenForm(of: String(result[range]))
             result.replaceSubrange(range, with: spoken)
         }
         return result
     }
+
+    // Only web links benefit from spoken separators. Addresses under other
+    // schemes (mailto, sip, tel, facetime) read naturally as-is, and
+    // stripping their "user-info" would delete the address itself.
+    private static let spokenSchemes: Set<String> = ["http", "https"]
 
     private static func spokenForm(of link: String) -> String {
         var remainder = link

@@ -15,11 +15,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         statusMenuController = StatusMenuController(
             speechController: speechController,
-            onReadSelection: { [weak self] in self?.readSelection() }
+            onReadSelection: { [weak self] in self?.readSelection() },
+            isHotKeyRegistered: { [weak self] in self?.hotKeyMonitor.isRegistered ?? false }
         )
 
         hotKeyMonitor.onPress = { [weak self] in
             self?.readSelection()
+        }
+        hotKeyMonitor.onRegistrationChange = { [weak self] _ in
+            self?.statusMenuController?.refreshIcon()
         }
 
         speechController.onStateChange = { [weak self] _ in

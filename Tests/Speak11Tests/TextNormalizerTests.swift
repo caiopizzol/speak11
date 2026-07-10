@@ -83,6 +83,13 @@ struct TextNormalizerTests {
     }
 
     @Test
+    func leavesSipAndTelUrisUnchanged() {
+        let prose = "Call sip:alice@example.com or tel:+14155550123 now"
+
+        #expect(TextNormalizer.verbalizingLinks(in: prose) == prose)
+    }
+
+    @Test
     func dropsUserInfoCredentials() {
         #expect(
             TextNormalizer.verbalizingLinks(

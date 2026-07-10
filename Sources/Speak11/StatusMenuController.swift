@@ -6,13 +6,16 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
     private let speechController: SpeechController
     private let onReadSelection: () -> Void
+    private let isHotKeyRegistered: () -> Bool
 
     init(
         speechController: SpeechController,
-        onReadSelection: @escaping () -> Void
+        onReadSelection: @escaping () -> Void,
+        isHotKeyRegistered: @escaping () -> Bool = { true }
     ) {
         self.speechController = speechController
         self.onReadSelection = onReadSelection
+        self.isHotKeyRegistered = isHotKeyRegistered
         super.init()
 
         let menu = NSMenu()
@@ -54,17 +57,19 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
             return
         }
 
+        let shortcutSuffix = isHotKeyRegistered() ? "    ⌥A" : ""
+
         switch speechController.state {
         case .idle:
-            menu.addItem(item("Read Selection    ⌥A", action: #selector(readSelection)))
+            menu.addItem(item("Read Selection\(shortcutSuffix)", action: #selector(readSelection)))
         case .preparing where speechController.isBackgroundWarmup:
-            menu.addItem(item("Read Selection    ⌥A", action: #selector(readSelection)))
+            menu.addItem(item("Read Selection\(shortcutSuffix)", action: #selector(readSelection)))
         case .preparing:
             let preparingItem = item("Preparing Voice…", action: nil)
             preparingItem.isEnabled = false
             menu.addItem(preparingItem)
         case .speaking:
-            menu.addItem(item("Stop Speaking    ⌥A", action: #selector(readSelection)))
+            menu.addItem(item("Stop Speaking\(shortcutSuffix)", action: #selector(readSelection)))
         case let .failed(failure):
             menu.addItem(item(
                 "⚠︎ Couldn't Speak — Try Again",
@@ -73,6 +78,15 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
             let summaryItem = item(failure.menuSummary, action: nil)
             summaryItem.isEnabled = false
             menu.addItem(summaryItem)
+        }
+
+        if !isHotKeyRegistered() {
+            let conflictItem = item(
+                "⌥A is in use by another app — use this menu",
+                action: nil
+            )
+            conflictItem.isEnabled = false
+            menu.addItem(conflictItem)
         }
 
         let speedItem = NSMenuItem(

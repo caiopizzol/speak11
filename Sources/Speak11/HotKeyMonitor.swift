@@ -92,6 +92,15 @@ enum SpeakKeyCodeResolver {
 @MainActor
 final class HotKeyMonitor {
     var onPress: (() -> Void)?
+    var onRegistrationChange: ((Bool) -> Void)?
+
+    private(set) var isRegistered = false {
+        didSet {
+            if isRegistered != oldValue {
+                onRegistrationChange?(isRegistered)
+            }
+        }
+    }
 
     private var eventHotKey: EventHotKeyRef?
     private var eventHandler: EventHandlerRef?
@@ -170,8 +179,12 @@ final class HotKeyMonitor {
             0,
             &hotKeyRef
         )
-        guard status == noErr else { return false }
+        guard status == noErr else {
+            isRegistered = false
+            return false
+        }
         eventHotKey = hotKeyRef
+        isRegistered = true
         return true
     }
 
@@ -184,5 +197,6 @@ final class HotKeyMonitor {
             UnregisterEventHotKey(eventHotKey)
         }
         eventHotKey = nil
+        isRegistered = false
     }
 }
