@@ -27,26 +27,30 @@ final class SelectionReader {
             return nil
         }
 
-        if let text = await copiedSelection() {
+        let pasteboard = NSPasteboard.general
+        let snapshot = PasteboardSnapshot(pasteboard: pasteboard)
+
+        if let text = await copiedSelection(pasteboard: pasteboard, snapshot: snapshot) {
             return TextNormalizer.normalize(text)
         }
 
         // Terminals and tmux often place a selection straight on the
-        // clipboard without exposing it through Accessibility, so an
-        // opt-in fallback reads what is already there.
-        guard Preferences.readsClipboardWhenNothingSelected,
-              let clipboardText = Self.clipboardText()
-        else { return nil }
+        // clipboard without exposing it through Accessibility. The fallback
+        // speaks the snapshot captured when the shortcut was pressed, not
+        // whatever is on the live clipboard after the Command-C wait.
+        guard let clipboardText = Self.clipboardFallback(
+            isEnabled: Preferences.readsClipboardWhenNothingSelected,
+            snapshot: snapshot
+        ) else { return nil }
         return TextNormalizer.normalize(clipboardText)
     }
 
-    static func clipboardText(from pasteboard: NSPasteboard = .general) -> String? {
-        let snapshot = PasteboardSnapshot(pasteboard: pasteboard)
-        guard !snapshot.containsSensitiveData else { return nil }
-        guard let text = pasteboard.string(forType: .string),
-              !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        else { return nil }
-        return text
+    static func clipboardFallback(
+        isEnabled: Bool,
+        snapshot: PasteboardSnapshot
+    ) -> String? {
+        guard isEnabled else { return nil }
+        return snapshot.plainText
     }
 
     private func accessibilitySelection() -> AccessibilitySelection {
@@ -70,9 +74,10 @@ final class SelectionReader {
         return .unavailable
     }
 
-    private func copiedSelection() async -> String? {
-        let pasteboard = NSPasteboard.general
-        let snapshot = PasteboardSnapshot(pasteboard: pasteboard)
+    private func copiedSelection(
+        pasteboard: NSPasteboard,
+        snapshot: PasteboardSnapshot
+    ) async -> String? {
         guard !snapshot.containsSensitiveData else { return nil }
         let originalChangeCount = pasteboard.changeCount
 

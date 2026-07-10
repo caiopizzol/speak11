@@ -103,7 +103,7 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
     private func addLaunchAndQuitItems(to menu: NSMenu) {
         menu.addItem(.separator())
         let clipboardItem = item(
-            "Read Clipboard When Nothing Is Selected",
+            "Use Clipboard When Selection Can't Be Read",
             action: #selector(toggleClipboardFallback)
         )
         clipboardItem.state = Preferences.readsClipboardWhenNothingSelected ? .on : .off

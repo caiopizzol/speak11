@@ -18,6 +18,21 @@ struct PasteboardSnapshot {
         }
     }
 
+    // Safe spoken-fallback text from the moment the snapshot was taken, so a
+    // clipboard manager writing during the Command-C wait is never read.
+    var plainText: String? {
+        guard !containsSensitiveData else { return nil }
+        for item in items {
+            guard
+                let data = item[.string],
+                let text = String(data: data, encoding: .utf8),
+                !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            else { continue }
+            return text
+        }
+        return nil
+    }
+
     func restore(to pasteboard: NSPasteboard = .general) {
         pasteboard.clearContents()
         guard !items.isEmpty else { return }

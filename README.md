@@ -44,9 +44,10 @@ Speak11 is a native Swift menu-bar app:
 - Apps that do not expose selection through Accessibility use a guarded
   Command-C fallback. Speak11 snapshots every clipboard item and restores it
   only if no other process changed the clipboard in the meantime.
-- An optional menu setting reads the clipboard when nothing is selected,
-  useful in terminals and tmux where selecting text copies it directly.
-  Clipboard contents marked concealed or transient are never read.
+- An optional menu setting speaks the clipboard when the selection can't be
+  read, useful in terminals and tmux where selecting text copies it directly.
+  Speak11 uses the clipboard as it was when the shortcut was pressed, and
+  contents marked concealed or transient are never read.
 - [FluidAudio](https://github.com/FluidInference/FluidAudio) runs Kokoro 82M
   locally through Core ML and the Apple Neural Engine.
 - The next text chunk is generated while the current chunk plays, keeping
