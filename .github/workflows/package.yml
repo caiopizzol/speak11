@@ -1,0 +1,81 @@
+name: Package App
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: App version
+        required: true
+        default: 0.2.0
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    runs-on: macos-15
+    env:
+      APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+      APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select Xcode 16
+        run: sudo xcode-select -s /Applications/Xcode_16.4.app
+      - name: Resolve version
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+          else
+            echo "VERSION=${{ inputs.version }}" >> "$GITHUB_ENV"
+          fi
+          echo "BUILD_NUMBER=$GITHUB_RUN_NUMBER" >> "$GITHUB_ENV"
+      - name: Import Developer ID certificate
+        if: env.APPLE_CERTIFICATE_BASE64 != ''
+        shell: bash
+        run: |
+          KEYCHAIN_PASSWORD=$(openssl rand -hex 16)
+          CERTIFICATE_PATH="$RUNNER_TEMP/developer-id.p12"
+          KEYCHAIN_PATH="$RUNNER_TEMP/signing.keychain-db"
+          echo "$APPLE_CERTIFICATE_BASE64" | base64 --decode > "$CERTIFICATE_PATH"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERTIFICATE_PATH" -P "$APPLE_CERTIFICATE_PASSWORD" \
+            -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH"
+      - name: Require signing for tagged releases
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          if [[ -z "$APPLE_SIGNING_IDENTITY" || -z "$APPLE_ID" || -z "$APPLE_TEAM_ID" || -z "$APPLE_APP_SPECIFIC_PASSWORD" ]]; then
+            echo "Tagged releases require Developer ID signing and notarization secrets." >&2
+            exit 1
+          fi
+      - name: Package app
+        shell: bash
+        run: |
+          if [[ -n "$APPLE_SIGNING_IDENTITY" ]]; then
+            SIGN_IDENTITY="$APPLE_SIGNING_IDENTITY" ./scripts/package-app.sh
+          else
+            ./scripts/package-app.sh
+          fi
+      - name: Notarize app
+        if: env.APPLE_SIGNING_IDENTITY != '' && env.APPLE_ID != ''
+        run: ./scripts/notarize-app.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Speak11-${{ env.VERSION }}
+          path: dist/Speak11.zip
+      - name: Publish tagged release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/Speak11.zip --generate-notes
