@@ -18,3 +18,5 @@
 - Show a focused re-download window when the local model cache is missing.
 - Warm the voice at launch so the first shortcut press does not stall.
 - Move the launch-at-login opt-in into onboarding while keeping it in the menu.
+- Speak links as words ("example dot com slash path"), dropping schemes,
+  query strings, and fragments so tokens and secrets are never read aloud.
