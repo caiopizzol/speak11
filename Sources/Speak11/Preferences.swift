@@ -22,4 +22,15 @@ enum Preferences {
             UserDefaults.standard.set(newValue, forKey: onboardingCompletedKey)
         }
     }
+
+    static var readsClipboardWhenNothingSelected: Bool {
+        get {
+            UserDefaults.standard.bool(forKey: readsClipboardKey)
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: readsClipboardKey)
+        }
+    }
+
+    private static let readsClipboardKey = "readsClipboardWhenNothingSelected"
 }

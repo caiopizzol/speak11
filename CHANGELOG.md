@@ -23,3 +23,5 @@
 - Speak links as words ("example dot com slash path"), dropping schemes,
   user-info, query parameters, and fragments, which commonly contain
   credentials or tracking values.
+- Add an opt-in menu setting to read the clipboard when nothing is selected,
+  for terminals and tmux where selecting copies without exposing a selection.

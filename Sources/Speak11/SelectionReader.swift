@@ -27,8 +27,26 @@ final class SelectionReader {
             return nil
         }
 
-        guard let text = await copiedSelection() else { return nil }
-        return TextNormalizer.normalize(text)
+        if let text = await copiedSelection() {
+            return TextNormalizer.normalize(text)
+        }
+
+        // Terminals and tmux often place a selection straight on the
+        // clipboard without exposing it through Accessibility, so an
+        // opt-in fallback reads what is already there.
+        guard Preferences.readsClipboardWhenNothingSelected,
+              let clipboardText = Self.clipboardText()
+        else { return nil }
+        return TextNormalizer.normalize(clipboardText)
+    }
+
+    static func clipboardText(from pasteboard: NSPasteboard = .general) -> String? {
+        let snapshot = PasteboardSnapshot(pasteboard: pasteboard)
+        guard !snapshot.containsSensitiveData else { return nil }
+        guard let text = pasteboard.string(forType: .string),
+              !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else { return nil }
+        return text
     }
 
     private func accessibilitySelection() -> AccessibilitySelection {

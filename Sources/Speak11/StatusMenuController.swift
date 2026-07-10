@@ -102,6 +102,13 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
 
     private func addLaunchAndQuitItems(to menu: NSMenu) {
         menu.addItem(.separator())
+        let clipboardItem = item(
+            "Read Clipboard When Nothing Is Selected",
+            action: #selector(toggleClipboardFallback)
+        )
+        clipboardItem.state = Preferences.readsClipboardWhenNothingSelected ? .on : .off
+        menu.addItem(clipboardItem)
+
         let loginItem = item("Launch at Login", action: #selector(toggleLaunchAtLogin))
         loginItem.state = SMAppService.mainApp.status == .enabled ? .on : .off
         menu.addItem(loginItem)
@@ -134,6 +141,10 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
 
     @objc private func retrySpeech() {
         speechController.retry()
+    }
+
+    @objc private func toggleClipboardFallback() {
+        Preferences.readsClipboardWhenNothingSelected.toggle()
     }
 
     @objc private func selectSpeed(_ sender: NSMenuItem) {
