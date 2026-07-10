@@ -23,14 +23,18 @@ store reading history, transcribe speech, rewrite text, or require an account.
 2. Refuse to read secure text fields.
 3. Use synthetic Command-C only as a compatibility fallback.
 4. Snapshot all pasteboard item types before fallback capture.
-5. Restore the snapshot only if the pasteboard still contains Speak11's copy.
-6. With the opt-in enabled, speak the snapshot's plain text when both
-   extraction methods fail — never the live clipboard, and never contents
-   marked concealed or transient.
+5. Apply the concealed/transient refusal to the captured contents too, not
+   only to the pre-capture snapshot.
+6. Restore the snapshot only if the pasteboard still contains Speak11's copy.
+7. With the opt-in enabled, speak the pre-capture snapshot's plain text when
+   both extraction methods fail — never the live clipboard, and never
+   contents marked concealed or transient.
 
 This order avoids clipboard changes in well-behaved applications and prevents
 Speak11 from overwriting a clipboard update made concurrently by the user or
-another application.
+another application. One limitation is inherent: during the brief Command-C
+wait, a write from another process is indistinguishable from the copy result,
+so the capture window can pick up a concurrent clipboard change.
 
 ## Speech
 

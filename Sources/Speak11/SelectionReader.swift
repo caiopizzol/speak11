@@ -87,15 +87,17 @@ final class SelectionReader {
             try? await Task.sleep(for: .milliseconds(25))
             guard pasteboard.changeCount != originalChangeCount else { continue }
 
+            // Snapshotting the post-copy state applies the same sensitive-type
+            // guard to whatever landed on the pasteboard. A concurrent write by
+            // another process is indistinguishable from the Command-C result;
+            // that ambiguity is inherent to this compatibility fallback.
             let copiedChangeCount = pasteboard.changeCount
-            let text = pasteboard.string(forType: .string)
+            let copied = PasteboardSnapshot(pasteboard: pasteboard)
             if pasteboard.changeCount == copiedChangeCount {
                 snapshot.restore(to: pasteboard)
             }
             guard !Task.isCancelled else { return nil }
-            return text?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
-                ? text
-                : nil
+            return copied.plainText
         }
         return nil
     }
