@@ -83,6 +83,29 @@ struct TextNormalizerTests {
     }
 
     @Test
+    func dropsUserInfoCredentials() {
+        #expect(
+            TextNormalizer.verbalizingLinks(
+                in: "Use https://user:password@example.com/path here"
+            ) == "Use example dot com slash path here"
+        )
+    }
+
+    @Test
+    func leavesLocalhostUnchanged() {
+        let prose = "Server at localhost:3000/api is up"
+
+        #expect(TextNormalizer.verbalizingLinks(in: prose) == prose)
+    }
+
+    @Test
+    func leavesBareIpAddressesUnchanged() {
+        let prose = "Ping 192.168.1.1 now"
+
+        #expect(TextNormalizer.verbalizingLinks(in: prose) == prose)
+    }
+
+    @Test
     func leavesOrdinaryProseUnchanged() {
         let prose = "e.g. the U.S. version 3.14 is fine. Bare localhost too."
 

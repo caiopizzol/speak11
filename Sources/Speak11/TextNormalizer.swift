@@ -19,8 +19,9 @@ enum TextNormalizer {
     }
 
     // Local TTS reads "example.com/path" as a garbled word; speak the
-    // separators instead. Query strings and fragments are dropped so
-    // tracking tokens and secrets are never read aloud.
+    // separators instead. Query strings, fragments, and user-info are
+    // dropped because they commonly carry credentials or tracking values;
+    // secrets embedded in the path itself are still spoken.
     static func verbalizingLinks(in text: String) -> String {
         guard
             let detector = try? NSDataDetector(
@@ -52,6 +53,10 @@ enum TextNormalizer {
             remainder = String(remainder[schemeEnd.upperBound...])
         }
         remainder = String(remainder.prefix { $0 != "?" && $0 != "#" })
+        let authorityEnd = remainder.firstIndex(of: "/") ?? remainder.endIndex
+        if let userInfoEnd = remainder[..<authorityEnd].lastIndex(of: "@") {
+            remainder = String(remainder[remainder.index(after: userInfoEnd)...])
+        }
         return remainder
             .replacingOccurrences(of: "/", with: " slash ")
             .replacingOccurrences(of: ".", with: " dot ")
