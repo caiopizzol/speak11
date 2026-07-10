@@ -23,7 +23,8 @@ speech generation works offline.
 
 1. Download `Speak11.zip` from the latest release.
 2. Drag `Speak11.app` into Applications.
-3. Open Speak11 and allow Accessibility access when macOS asks.
+3. Open Speak11. A setup window asks for Accessibility access and downloads
+   the voice automatically.
 4. Select text in any app and press `Option-Shift-/`.
 
 Press the shortcut again to stop. Use the waveform menu-bar icon to change

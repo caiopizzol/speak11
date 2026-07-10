@@ -77,6 +77,11 @@ final class SpeechController {
     private var inFlightSynthesisID: UUID?
     private var generation = 0
 
+    func modelsAvailable() async -> Bool {
+        if isVoicePrepared { return true }
+        return await engine.isAvailable()
+    }
+
     func prepareVoice() {
         guard !isActive, !isVoicePrepared else { return }
         begin { [weak self] generation in
@@ -84,6 +89,26 @@ final class SpeechController {
             try await prepareForSpeech()
             guard isCurrent(generation) else { return }
             state = .idle
+        }
+    }
+
+    func prepareVoiceAndWait() async throws {
+        guard !isVoicePrepared else { return }
+        stop()
+        generation += 1
+        let currentGeneration = generation
+        state = .preparing
+
+        do {
+            try Task.checkCancellation()
+            try await prepareEngine()
+            guard isCurrent(currentGeneration) else { throw CancellationError() }
+            state = .idle
+        } catch {
+            if generation == currentGeneration {
+                state = .idle
+            }
+            throw error
         }
     }
 

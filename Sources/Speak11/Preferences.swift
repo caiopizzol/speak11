@@ -2,6 +2,7 @@ import Foundation
 
 enum Preferences {
     private static let speakingRateKey = "speakingRate"
+    private static let onboardingCompletedKey = "onboardingCompleted"
 
     static var speakingRate: Float {
         get {
@@ -10,6 +11,15 @@ enum Preferences {
         }
         set {
             UserDefaults.standard.set(min(max(newValue, 0.75), 2), forKey: speakingRateKey)
+        }
+    }
+
+    static var onboardingCompleted: Bool {
+        get {
+            UserDefaults.standard.bool(forKey: onboardingCompletedKey)
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: onboardingCompletedKey)
         }
     }
 }

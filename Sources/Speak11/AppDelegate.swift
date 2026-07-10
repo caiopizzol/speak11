@@ -6,9 +6,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let speechController = SpeechController()
     private let hotKeyMonitor = HotKeyMonitor()
     private var statusMenuController: StatusMenuController?
+    private var onboardingWindowController: OnboardingWindowController?
     private var accessibilityTimer: Timer?
     private var selectionTask: Task<Void, Never>?
     private var selectionGeneration = 0
+    private var isOnboardingActive = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         statusMenuController = StatusMenuController(
@@ -24,10 +26,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.statusMenuController?.refreshIcon()
         }
 
-        startHotKeyAndRequestAccessibility()
+        startHotKey()
+        Task { @MainActor [weak self] in
+            await self?.routeLaunch()
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        onboardingWindowController?.cancel()
         accessibilityTimer?.invalidate()
         selectionTask?.cancel()
         hotKeyMonitor.stop()
@@ -35,6 +41,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func readSelection() {
+        guard !isOnboardingActive else {
+            NSSound.beep()
+            return
+        }
+
         if speechController.isActive {
             speechController.stop()
             return
@@ -63,8 +74,58 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func startHotKeyAndRequestAccessibility() {
+    private func routeLaunch() async {
+        let onboardingCompleted = Preferences.onboardingCompleted
+        let modelsAvailable = onboardingCompleted
+            ? await speechController.modelsAvailable()
+            : false
+
+        switch OnboardingLaunchDecision.decide(
+            onboardingCompleted: onboardingCompleted,
+            modelsAvailable: modelsAvailable
+        ) {
+        case .firstRun:
+            showOnboarding(flow: .firstRun)
+        case .modelRecovery:
+            showOnboarding(flow: .modelRecovery)
+        case .normal:
+            requestAccessibilityPermissionIfNeeded()
+            speechController.prepareVoice()
+        }
+    }
+
+    private func showOnboarding(flow: OnboardingFlow) {
+        isOnboardingActive = true
+        let controller = OnboardingWindowController(
+            flow: flow,
+            speechController: speechController,
+            onCompletion: { [weak self] completion in
+                self?.finishOnboarding(completion)
+            }
+        )
+        onboardingWindowController = controller
+        controller.show()
+    }
+
+    private func finishOnboarding(_ completion: OnboardingWindowController.Completion) {
+        switch completion {
+        case .completedFirstRun:
+            Preferences.onboardingCompleted = true
+        case .completedRecovery:
+            break
+        }
+
+        isOnboardingActive = false
+        onboardingWindowController = nil
+        requestAccessibilityPermissionIfNeeded()
+        statusMenuController?.refreshIcon()
+    }
+
+    private func startHotKey() {
         _ = hotKeyMonitor.start()
+    }
+
+    private func requestAccessibilityPermissionIfNeeded() {
         guard !SelectionReader.isAccessibilityEnabled else { return }
         SelectionReader.requestAccessibilityPermission()
         startAccessibilityPolling()
