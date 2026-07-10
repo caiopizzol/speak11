@@ -6,7 +6,7 @@ struct PasteboardSnapshot {
 
     var containsSensitiveData: Bool {
         items.contains(where: { item in
-            !item.keys.isDisjoint(with: Self.sensitiveTypes)
+            item.keys.contains(where: Self.sensitiveTypes.contains)
         })
     }
 
