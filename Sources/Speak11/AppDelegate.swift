@@ -88,7 +88,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             showOnboarding(flow: .modelRecovery)
         case .normal:
             requestAccessibilityPermissionIfNeeded()
-            speechController.prepareVoice()
+            speechController.warmUpVoice()
         }
     }
 

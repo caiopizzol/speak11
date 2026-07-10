@@ -3,13 +3,15 @@ import FluidAudio
 import Foundation
 
 enum SpeechFailure: Equatable {
-    case modelPreparation(message: String)
+    case modelPreparation(text: String?, message: String)
     case synthesis(text: String, message: String)
     case playback(text: String, message: String)
 
     var retryTarget: SpeechRetryTarget {
         switch self {
-        case .modelPreparation:
+        case let .modelPreparation(text?, _):
+            .speak(text)
+        case .modelPreparation(nil, _):
             .prepareVoice
         case let .synthesis(text, _), let .playback(text, _):
             .speak(text)
@@ -18,7 +20,7 @@ enum SpeechFailure: Equatable {
 
     var menuSummary: String {
         let summary = switch self {
-        case let .modelPreparation(message):
+        case let .modelPreparation(_, message):
             "Voice preparation failed: \(message)"
         case let .synthesis(_, message):
             "Speech synthesis failed: \(message)"
@@ -103,11 +105,16 @@ final class SpeechController {
         guard !isActive, !isVoicePrepared else { return }
         begin { [weak self] generation in
             guard let self else { return }
-            try await prepareForSpeech()
+            try await prepareForSpeech(requestText: nil)
             guard isCurrent(generation) else { return }
             isBackgroundWarmup = false
             state = .idle
         }
+    }
+
+    func warmUpVoice() {
+        guard !isActive, !isVoicePrepared else { return }
+        prepareVoice()
         isBackgroundWarmup = true
     }
 
@@ -138,7 +145,7 @@ final class SpeechController {
 
         begin { [weak self] generation in
             guard let self else { return }
-            try await prepareForSpeech()
+            try await prepareForSpeech(requestText: requestText)
             try await play(
                 requestText: requestText,
                 chunks: chunks,
@@ -186,10 +193,12 @@ final class SpeechController {
             } catch {
                 guard let self, self.isCurrent(currentGeneration) else { return }
                 self.audioPlayer = nil
+                self.isBackgroundWarmup = false
                 if let speechError = error as? SpeechOperationFailure {
                     self.state = .failed(speechError.failure)
                 } else {
                     self.state = .failed(.modelPreparation(
+                        text: nil,
                         message: error.localizedDescription
                     ))
                 }
@@ -197,13 +206,14 @@ final class SpeechController {
         }
     }
 
-    private func prepareForSpeech() async throws {
+    private func prepareForSpeech(requestText: String?) async throws {
         do {
             try await prepareEngine()
         } catch is CancellationError {
             throw CancellationError()
         } catch {
             throw SpeechOperationFailure(.modelPreparation(
+                text: requestText,
                 message: error.localizedDescription
             ))
         }

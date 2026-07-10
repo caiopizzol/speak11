@@ -3,10 +3,39 @@ import Testing
 
 struct SpeechControllerTests {
     @Test
-    func modelPreparationFailureRetriesPreparation() {
-        let failure = SpeechFailure.modelPreparation(message: "download failed")
+    func modelPreparationFailureDuringSpeechRetriesOriginalText() {
+        let text = "The exact normalized request text."
+        let failure = SpeechFailure.modelPreparation(
+            text: text,
+            message: "download failed"
+        )
+
+        #expect(failure.retryTarget == .speak(text))
+    }
+
+    @Test
+    func modelPreparationFailureWithoutRequestRetriesPreparation() {
+        let failure = SpeechFailure.modelPreparation(
+            text: nil,
+            message: "download failed"
+        )
 
         #expect(failure.retryTarget == .prepareVoice)
+    }
+
+    @Test
+    @MainActor
+    func backgroundWarmupIsNotUserInitiatedActivity() {
+        let controller = SpeechController()
+
+        controller.warmUpVoice()
+        #expect(controller.isActive)
+        #expect(controller.isBackgroundWarmup)
+        #expect(!controller.isUserInitiatedActive)
+
+        controller.stop()
+        #expect(!controller.isBackgroundWarmup)
+        #expect(!controller.isActive)
     }
 
     @Test
@@ -23,6 +52,16 @@ struct SpeechControllerTests {
         let failure = SpeechFailure.playback(text: text, message: "playback failed")
 
         #expect(failure.retryTarget == .speak(text))
+    }
+
+    @Test
+    func preparationSummaryOmitsRequestText() {
+        let failure = SpeechFailure.modelPreparation(
+            text: "Sensitive selection",
+            message: "download failed"
+        )
+
+        #expect(failure.menuSummary == "Voice preparation failed: download failed")
     }
 
     @Test
