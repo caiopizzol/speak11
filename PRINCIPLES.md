@@ -34,7 +34,8 @@ another application.
 - Keep the model resident after first use for low repeat latency.
 - Chunk with Natural Language sentence boundaries and bound chunk size.
 - Generate one chunk ahead while the current chunk plays.
-- Pick up speed changes at chunk boundaries and regenerate stale lookahead.
+- Apply speed changes immediately by time-stretching the playing chunk, then
+  synthesize following chunks at the exact speed.
 - A second `⌥A` press cancels pending playback and discards late results.
 
 ## Distribution

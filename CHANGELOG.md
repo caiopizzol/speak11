@@ -10,7 +10,9 @@
 - Add sentence-aware lookahead generation, speaking speed, launch at login,
   app packaging, CI, optional Developer ID signing, and notarization support.
 - Register the single `⌥A` shortcut through the active keyboard layout.
-- Pick up speaking speed at each chunk and regenerate stale lookahead audio.
+- Apply speed changes to the reading in progress: the current sentence is
+  time-stretched immediately and later sentences are synthesized at the new
+  speed.
 - Preserve typed failure context so Try Again retries the original request.
 - Simplify the menu around read/stop, speed, launch at login, and quit.
 - Add a first-run onboarding window with a hard Accessibility gate and

@@ -50,6 +50,14 @@ enum SpeechSpeed {
     static func isLookaheadStale(synthesizedSpeed: Float, currentSpeed: Float) -> Bool {
         abs(synthesizedSpeed - currentSpeed) >= 0.001
     }
+
+    // Mid-chunk speed changes time-stretch the already-synthesized audio;
+    // AVAudioPlayer supports rates in 0.5...2.0, and the next chunk is
+    // synthesized at the exact speed anyway.
+    static func playbackRate(desiredSpeed: Float, synthesizedSpeed: Float) -> Float {
+        guard synthesizedSpeed > 0 else { return 1 }
+        return min(max(desiredSpeed / synthesizedSpeed, 0.5), 2)
+    }
 }
 
 @MainActor
@@ -254,6 +262,7 @@ final class SpeechController {
                 )
             }
 
+            let synthesizedSpeed = pendingAudio.speed
             let audio = try await pendingAudio.task.value
             try Task.checkCancellation()
             guard isCurrent(generation) else { throw CancellationError() }
@@ -270,7 +279,11 @@ final class SpeechController {
 
             state = .speaking
             do {
-                try await playAudio(audio, generation: generation)
+                try await playAudio(
+                    audio,
+                    synthesizedSpeed: synthesizedSpeed,
+                    generation: generation
+                )
             } catch is CancellationError {
                 throw CancellationError()
             } catch {
@@ -310,8 +323,13 @@ final class SpeechController {
         )
     }
 
-    private func playAudio(_ data: Data, generation: Int) async throws {
+    private func playAudio(
+        _ data: Data,
+        synthesizedSpeed: Float,
+        generation: Int
+    ) async throws {
         let player = try AVAudioPlayer(data: data)
+        player.enableRate = true
         player.prepareToPlay()
         guard player.play() else {
             throw SpeechError.playbackFailed
@@ -319,6 +337,10 @@ final class SpeechController {
         audioPlayer = player
 
         while player.isPlaying {
+            player.rate = SpeechSpeed.playbackRate(
+                desiredSpeed: Preferences.speakingRate,
+                synthesizedSpeed: synthesizedSpeed
+            )
             try await Task.sleep(for: .milliseconds(50))
             guard isCurrent(generation) else { throw CancellationError() }
         }

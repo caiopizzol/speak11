@@ -82,7 +82,7 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
 
         if !isHotKeyRegistered() {
             let conflictItem = item(
-                "⌥A is in use by another app — use this menu",
+                "⌥A couldn't be registered — use this menu",
                 action: nil
             )
             conflictItem.isEnabled = false

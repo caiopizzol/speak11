@@ -75,6 +75,20 @@ struct SpeechControllerTests {
     }
 
     @Test
+    func playbackRateStretchesCurrentChunkTowardDesiredSpeed() {
+        #expect(SpeechSpeed.playbackRate(desiredSpeed: 2, synthesizedSpeed: 1) == 2)
+        #expect(SpeechSpeed.playbackRate(desiredSpeed: 1, synthesizedSpeed: 2) == 0.5)
+        #expect(SpeechSpeed.playbackRate(desiredSpeed: 1.5, synthesizedSpeed: 1.5) == 1)
+    }
+
+    @Test
+    func playbackRateIsClampedToPlayerLimits() {
+        #expect(SpeechSpeed.playbackRate(desiredSpeed: 2, synthesizedSpeed: 0.75) == 2)
+        #expect(SpeechSpeed.playbackRate(desiredSpeed: 0.75, synthesizedSpeed: 2) == 0.5)
+        #expect(SpeechSpeed.playbackRate(desiredSpeed: 1, synthesizedSpeed: 0) == 1)
+    }
+
+    @Test
     func lookaheadIsStaleOnlyWhenSpeedMeaningfullyChanges() {
         #expect(!SpeechSpeed.isLookaheadStale(
             synthesizedSpeed: 1,
