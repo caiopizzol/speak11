@@ -44,7 +44,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
-        if speechController.isActive {
+        if speechController.isUserInitiatedActive {
             speechController.stop()
             return
         }

@@ -47,8 +47,8 @@ Speak11 is a native Swift menu-bar app:
 - The next text chunk is generated while the current chunk plays, keeping
   longer selections moving without a Python daemon or background server.
 
-The first synthesis can take longer while models download and Core ML prepares
-them. Later requests reuse the local cache.
+The setup window downloads the models once, and each launch warms the voice in
+the background so the first reading starts quickly.
 
 ## Build
 

@@ -57,6 +57,8 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
         switch speechController.state {
         case .idle:
             menu.addItem(item("Read Selection    ⌥⇧/", action: #selector(readSelection)))
+        case .preparing where speechController.isBackgroundWarmup:
+            menu.addItem(item("Read Selection    ⌥⇧/", action: #selector(readSelection)))
         case .preparing:
             let preparingItem = item("Preparing Voice…", action: nil)
             preparingItem.isEnabled = false

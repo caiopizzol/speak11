@@ -65,9 +65,16 @@ final class SpeechController {
         didSet { onStateChange?(state) }
     }
     private(set) var isVoicePrepared = false
+    private(set) var isBackgroundWarmup = false
 
     var isActive: Bool {
         state == .preparing || state == .speaking
+    }
+
+    // Background warm-up must not count as user activity, or the first
+    // hotkey press after launch is read as Stop and swallowed.
+    var isUserInitiatedActive: Bool {
+        isActive && !isBackgroundWarmup
     }
 
     private let engine = KokoroAneManager()
@@ -98,8 +105,10 @@ final class SpeechController {
             guard let self else { return }
             try await prepareForSpeech()
             guard isCurrent(generation) else { return }
+            isBackgroundWarmup = false
             state = .idle
         }
+        isBackgroundWarmup = true
     }
 
     func prepareVoiceAndWait() async throws {
@@ -152,6 +161,7 @@ final class SpeechController {
 
     func stop() {
         generation += 1
+        isBackgroundWarmup = false
         speechTask?.cancel()
         speechTask = nil
         inFlightSynthesis?.cancel()
