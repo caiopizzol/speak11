@@ -27,9 +27,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         startHotKey()
-        Task { @MainActor [weak self] in
-            await self?.routeLaunch()
-        }
+        routeLaunch()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -74,10 +72,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func routeLaunch() async {
+    private func routeLaunch() {
         let onboardingCompleted = Preferences.onboardingCompleted
         let modelsAvailable = onboardingCompleted
-            ? await speechController.modelsAvailable()
+            ? SpeechController.modelsAvailableOnDisk()
             : false
 
         switch OnboardingLaunchDecision.decide(

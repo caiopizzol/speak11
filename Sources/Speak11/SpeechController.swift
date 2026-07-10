@@ -77,9 +77,19 @@ final class SpeechController {
     private var inFlightSynthesisID: UUID?
     private var generation = 0
 
-    func modelsAvailable() async -> Bool {
-        if isVoicePrepared { return true }
-        return await engine.isAvailable()
+    // engine.isAvailable() reflects in-memory load state, not the disk cache,
+    // so launch routing must check the cached files directly or every cold
+    // launch would be treated as model recovery.
+    nonisolated static func modelsAvailableOnDisk() -> Bool {
+        guard let cacheRoot = try? TtsCacheDirectory.ensure() else { return false }
+        let repoDirectory = cacheRoot
+            .appendingPathComponent(KokoroAneResourceDownloader.modelsSubdirectory)
+            .appendingPathComponent(KokoroAneVariant.english.repo.folderName)
+        return ModelNames.KokoroAne.requiredModels.allSatisfy { name in
+            FileManager.default.fileExists(
+                atPath: repoDirectory.appendingPathComponent(name).path
+            )
+        }
     }
 
     func prepareVoice() {
