@@ -12,8 +12,9 @@ store reading history, transcribe speech, rewrite text, or require an account.
   source code or modify files under the user's home directory.
 - The application must not require Python, shell scripts, a daemon, a local
   server, or an API key at runtime.
-- Selected text is held only for the active reading request and is never logged
-  or persisted.
+- Selected text is held in memory only for the active reading request — and,
+  after a failure, so Try Again can re-speak the same text — and is never
+  logged or persisted.
 
 ## Selection
 
